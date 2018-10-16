@@ -1,0 +1,134 @@
+<?php
+/**
+ * @file UCGY_CORE_PAGE_BUILDER.MODULE
+ *
+ * This contains some top-level, non-theming functionality that can be used
+ *   throughout the site. This module customizes the page layout and form
+ *   elements for the Page Manager module (when you create a new page or edit an
+ *   existing one).
+ */
+
+/**
+ * Implements hook_form_alter().
+ *
+ * Remove unnecessary form elements from the Page Manager forms and creates a unique machine name for the new page.
+ */
+function ucgy_core_page_builder_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  switch ($form_id) {
+    case 'page_manager_page_form_basic':
+      // Change administrative title label
+      $form['admin_title']['#title'] = t('Page title');
+
+      // Hide administrative description
+      $form['admin_description']['#access'] = FALSE;
+
+      // Hide 'variant type' field
+      $form['handler']['#type'] = 'hidden';
+
+      // Pass value to 'variant type' field so we don't get fatal error
+      $form['handler']['#value'] = 'panel_context';
+
+      // Create guaranteed unique machine name
+      $form['name']['#value'] = $user->uid.uniqid();
+      break;
+
+    case 'page_manager_save_page_form':
+      // edit text on save button
+      $form['save']['#value'] = 'Save & Exit';
+      break;
+
+    case 'page_manager_page_summary':
+      // hides Panel Header
+      $alteredHTML = str_replace('<div class="handler-summary">', '<div style = "display: none;">', $form['markup']['#markup']);
+
+      //hides link section including Add a new variant link
+      $alteredHTML = str_replace('<div class="links">','<div style = "display: none;">', $alteredHTML);
+      $form['markup']['#markup'] = $alteredHTML;
+      break;
+
+    case 'panels_panel_context_edit_content':
+      //Hides display settings unless you are Support or user 1
+      if (!(in_array('Support', $user->roles) || $user->uid === 1)) {
+
+        // hides display settings dropdown under the Content tab
+          $form['hide']['display-settings']['#markup'] = '';
+      }
+      break;
+  }
+  // Hides update button and changes text on save button
+  if (in_array($form_id, [
+    'page_manager_page_form_basic',
+    'page_manager_page_form_menu',
+    'page_manager_page_form_access',
+    'panels_panel_context_edit_content',
+  ])) {
+    if ($form['buttons']['return']['#value'] === 'Update') {
+      $form['buttons']['return']['#type'] = 'hidden';
+    }
+    $form['buttons']['save']['#value'] = 'Save & Continue';
+  }
+}
+
+/**
+ * Implements MODULE_process_HOOK().
+ *
+ * Hide table rows from Page Manager forms, Summary Table
+ */
+function ucgy_core_page_builder_process_table(&$variables) {
+
+  if ($variables['attributes']['id'] === 'page-manager-page-summary' && isset($variables['rows'])) {
+
+    // Hides Access Menu and Menu menu.
+    foreach ($variables['rows'] as $i => $rows) {
+      foreach ($rows as $row) {
+        if ($row['data'] === 'Access' || $row['data'] === 'Menu') {
+          unset($variables['rows'][$i]);
+        }
+      }
+    }
+
+  }
+}
+
+/**
+ * Implements hook_page_manager_operations_alter().
+ *
+ * Hides unwanted menu items for Page Manager and shows certain menu items based on role.
+ */
+function ucgy_core_page_builder_page_manager_operations_alter(&$result) {
+  global $user;
+ $page_manager_name = array_keys($result['handlers']['children'])[0];
+
+ if (empty($page_manager_name)){
+   drupal_set_message("Can't find the page name.");
+ }
+ else {
+   //Hides based on role
+   if (!(in_array('Site Administrator', $user->roles) || in_array('Support', $user->roles) || $user->uid === 1)) {
+
+     //hides access & menu items
+       unset($result['settings']['children']['access']);
+       unset($result['settings']['children']['menu']);
+   }
+   // hiding Variant / Panel menu items to all roles & changing menu wording
+   $result['handlers']['title'] = 'Edit';
+   $result['handlers']['children'][$page_manager_name]['title'] = '';
+   $result['settings']['children']['basic']['title'] = 'Page Name & Path';
+   unset($result['handlers']['children'][$page_manager_name]['children']['summary']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['meta']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['settings']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['criteria']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['context']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['layout']);
+   unset($result['handlers']['children'][$page_manager_name]['children']['preview']);
+
+   // hides to right menu items
+   unset($result['actions']['children']['add']);
+   unset($result['actions']['children']['import']);
+   unset($result['actions']['children']['disable']);
+
+   // hides Clone, Export, Delete, Disable buttons for variant submenu
+   unset($result['handlers']['children'][$page_manager_name]['children']['actions']);
+ }
+}
